@@ -1,0 +1,11 @@
+version: '3.3'
+
+services:
+  bot:
+    build: ./bot
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - DISCORD_SOURCE_CHANNEL_ID=${DISCORD_SOURCE_CHANNEL_ID}
+      - GOOGLE_CLIENT_EMAIL=${GOOGLE_CLIENT_EMAIL}
+      - GOOGLE_PRIVATE_KEY=${GOOGLE_PRIVATE_KEY}
