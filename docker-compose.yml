@@ -3,6 +3,7 @@ version: '3.3'
 services:
   bot:
     build: ./bot
+    restart: always
     volumes:
       - ./docker/bot/config:/bot/config
     environment:
