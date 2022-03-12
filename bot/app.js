@@ -1,9 +1,13 @@
 const Discord = require("discord.js");
-const { OpusEncoder } = require("@discordjs/opus");
-const textToSpeech = require('@google-cloud/text-to-speech');
-const { Readable } = require('stream');
-
-// 環境変数
+const {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  StreamType,
+  getVoiceConnection
+} = require("@discordjs/voice")
+const textToSpeech = require("@google-cloud/text-to-speech")
+const { Readable } = require("stream")
 
 const envs = [
   'DISCORD_TOKEN',
@@ -96,12 +100,14 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
     console.log(err);
   }
 }
+
 const channelFind = async (voiceChannel) => {
   const guild = voiceChannel.guild;
   const searchCondition = voiceChannel.id;
   const result = guild.channels.cache.find(val => val.name.endsWith(searchCondition));
   return result;
 }
+
 const textChannelDelete = async (ch) => {
   const target = await channelFind(ch);
   if (target != null) {
@@ -111,23 +117,26 @@ const textChannelDelete = async (ch) => {
     console.log("削除するチャンネルがないンゴ");
   }
 }
+
 const channelJoin = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
-    target.updateOverwrite(user, { VIEW_CHANNEL: true });
+    target.permissionOverwrites.edit(user, { VIEW_CHANNEL: true });
     return target;
   } else {
     console.log("チャンネルがないンゴ");
   }
 }
+
 const channelExit = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
-    target.updateOverwrite(user, { VIEW_CHANNEL: false });
+    target.permissionOverwrites.edit(user, { VIEW_CHANNEL: false });
   } else {
     console.log("チャンネルがないンゴ");
   }
 }
+
 const joinChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
   const guild = target.guild;
@@ -144,24 +153,27 @@ const leaveChannelSendNotification = async (ch, user) => {
     .catch(console.error);
 }
 
-const discordClient = new Discord.Client({
-  messageCacheMaxSize: 20,
-  messageSweepInterval: 30
-});
+const options = {
+  intents: ["GUILDS", "GUILD_MESSAGES", 'GUILD_VOICE_STATES'],
+};
 
+const discordClient = new Discord.Client(options);
 
 discordClient.on('voiceStateUpdate', async (oldState, newState) => {
-  const conn = discordClient.voice.connections.get(DISCORD_GUILD_ID);
-  if (conn && conn.channel && conn.channel.members.array().length < 2) {
-    conn.disconnect();
+  const conn = getVoiceConnection(DISCORD_GUILD_ID)
+  if (conn) {
+    const vcChannelId = conn.joinConfig.channelId
+    if (discordClient.channels.cache.get(vcChannelId).members.size < 2) {
+      conn.destroy();
+    }
   }
 
   const newMember = newState.member;
-  if (oldState.channelID === newState.channelID) {
+  if (oldState.channelId === newState.channelId) {
     return;
   }
-  if (oldState.channelID != null) {
-    const oldChannel = oldState.guild.channels.cache.get(oldState.channelID);
+  if (oldState.channelId != null) {
+    const oldChannel = oldState.guild.channels.cache.get(oldState.channelId);
     if (oldChannel.members.size == 0) {
       await textChannelDelete(oldChannel);
     } else {
@@ -174,8 +186,8 @@ discordClient.on('voiceStateUpdate', async (oldState, newState) => {
       await leaveChannelSendNotification(oldChannel, oldState.member);
     }
   }
-  if (newState.channelID != null) {
-    const newChannel = newState.guild.channels.cache.get(newState.channelID);
+  if (newState.channelId != null) {
+    const newChannel = newState.guild.channels.cache.get(newState.channelId);
     if (newChannel.members.size == 1) {
       textChannel = await textChannelCreate(newChannel, newState.member);
     } else {
@@ -189,10 +201,9 @@ discordClient.on('voiceStateUpdate', async (oldState, newState) => {
   }
 });
 
-
 // ソースとなるテキストチャンネルで発言があった場合、
 // ボイスチャンネルに参加して発言する
-discordClient.on('message', async (message) => {
+discordClient.on('messageCreate', async (message) => {
   const guild = message.guild;
   const channel = message.member.voice.channel;
 
@@ -214,15 +225,27 @@ discordClient.on('message', async (message) => {
   if (!text) { return; }
 
   // 誰もいなかったら参加しない
-  if (channel.members.array().length < 1) { return; }
+  if (channel.members.size < 1) { return; }
 
   // 発言者の参加チャンネルが、
   // 今のBot参加チャンネルと違うなら移動する
-  const currentConnection = discordClient.voice.connections.get(DISCORD_GUILD_ID);
-  const shouldMove = !currentConnection || currentConnection.channel.id !== channel.id;
-  const conn = shouldMove ? await channel.join() : currentConnection;
-
-  conn.play(await textToSpeechReadableStream(text), { highWaterMark: 12, bitrate: 'auto' });
+  const currentConnection = getVoiceConnection(DISCORD_GUILD_ID);
+  const shouldMove = !currentConnection || currentConnection.joinConfig.channelId !== channel.id;
+  const joinOption = {
+    adapterCreator: channel.guild.voiceAdapterCreator,
+    channelId: channel.id,
+    guildId: channel.guild.id,
+    selfDeaf: true,
+    selfMute: false,
+  }
+  const conn = shouldMove ? await joinVoiceChannel(joinOption) : currentConnection;
+  const player = createAudioPlayer()
+  conn.subscribe(player)
+  const resource = createAudioResource(
+    await textToSpeechReadableStream(text),
+    { inputType: StreamType.OggOpus }
+  )
+  player.play(resource);
 });
 
 discordClient.once('ready', () => {
