@@ -110,7 +110,7 @@ const CoefontTextToSpeechReadableStream = async (text, coefontConfig) => {
     responseType: 'stream',
   });
 
-  if ([400, 401, 403, 404, 500].some(response.status)) {
+  if ([400, 401, 403, 404, 500].some(status => status == response.status)) {
     console.log(`${response.status}: ${response.data.message}`)
     return new Readable({ read() {} });
   }
