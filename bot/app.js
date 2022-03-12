@@ -81,13 +81,16 @@ const getCoefontConfig = (memberId) => {
     return undefined;
   }
 
-  return jsonObj[index].coefont;
+  return jsonObj[index];
 }
 
-const CoefontTextToSpeechReadableStream = async (text, coefont) => {
+const CoefontTextToSpeechReadableStream = async (text, coefontConfig) => {
+  const coefontData = Object.assign(coefontConfig)
+  delete coefontConfig.id
+
   const data = JSON.stringify({
     text,
-    coefont,
+    ...coefontData
   });
 
   const date = String(Math.floor(Date.now() / 1000));
@@ -290,15 +293,15 @@ discordClient.on('messageCreate', async (message) => {
   const conn = shouldMove ? await joinVoiceChannel(joinOption) : currentConnection;
   const player = createAudioPlayer()
   conn.subscribe(player);
-  const coefontId = getCoefontConfig(message.member.id)
+  const coefontConfig = getCoefontConfig(message.member.id)
 
-  const resource = readableStream = coefontId == undefined
+  const resource = coefontConfig == undefined
     ? createAudioResource(
       await GoogleTextToSpeechReadableStream(text),
       { inputType: StreamType.OggOpus }
     )
     : createAudioResource(
-      await CoefontTextToSpeechReadableStream(text, coefontId),
+      await CoefontTextToSpeechReadableStream(text, coefontConfig),
       { inputType: StreamType.Arbitrary }
     )
 
