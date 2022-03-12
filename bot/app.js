@@ -1,3 +1,7 @@
+
+const axios = require('axios');
+const crypto = require('crypto');
+const fs = require('fs');
 const Discord = require("discord.js");
 const {
   joinVoiceChannel,
@@ -5,9 +9,9 @@ const {
   createAudioResource,
   StreamType,
   getVoiceConnection
-} = require("@discordjs/voice")
-const textToSpeech = require("@google-cloud/text-to-speech")
-const { Readable } = require("stream")
+} = require("@discordjs/voice");
+const textToSpeech = require("@google-cloud/text-to-speech");
+const { Readable } = require("stream");
 
 const envs = [
   'DISCORD_TOKEN',
@@ -36,12 +40,15 @@ const {
   DISCORD_TOKEN,
   DISCORD_GUILD_ID,
   GOOGLE_CLIENT_EMAIL,
-  GOOGLE_PRIVATE_KEY
+  GOOGLE_PRIVATE_KEY,
+  COEFONT_ACCESS_KEY,
+  COEFONT_CLIENT_SECRET,
 } = process.env;
+
 
 // テキスト → ReadableStream
 // Cloud Text-to-Speech APIを使用
-const textToSpeechReadableStream = async (text) => {
+const GoogleTextToSpeechReadableStream = async (text) => {
   const request = {
     input: { text },
     voice: {
@@ -59,6 +66,48 @@ const textToSpeechReadableStream = async (text) => {
   stream.push(response.audioContent);
 
   return stream;
+}
+
+/**
+ * MemberIdに紐付けたCoefontIdを返す。
+ * ない場合は undefined
+ * @param {string} memberId 
+ * @returns string | undefined
+ */
+const getCoefontConfig = (memberId) => {
+  const jsonObj = JSON.parse(fs.readFileSync('./config/coefont.json', 'utf8'));
+  const index = jsonObj.findIndex(obj => obj.id == memberId)
+  if (index == -1) {
+    return undefined;
+  }
+
+  return jsonObj[index].coefont;
+}
+
+const CoefontTextToSpeechReadableStream = async (text, coefont) => {
+  const data = JSON.stringify({
+    text,
+    coefont,
+  });
+
+  const date = String(Math.floor(Date.now() / 1000));
+
+  const signature = crypto
+    .createHmac('sha256', COEFONT_CLIENT_SECRET)
+    .update(date + data)
+    .digest('hex');
+
+  const response = await axios.post('https://api.coefont.cloud/v1/text2speech', data, {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': COEFONT_ACCESS_KEY,
+      'X-Coefont-Date': date,
+      'X-Coefont-Content': signature,
+    },
+    responseType: 'stream',
+  });
+
+  return response.data;
 }
 
 const client = new textToSpeech.TextToSpeechClient({
@@ -240,11 +289,19 @@ discordClient.on('messageCreate', async (message) => {
   }
   const conn = shouldMove ? await joinVoiceChannel(joinOption) : currentConnection;
   const player = createAudioPlayer()
-  conn.subscribe(player)
-  const resource = createAudioResource(
-    await textToSpeechReadableStream(text),
-    { inputType: StreamType.OggOpus }
-  )
+  conn.subscribe(player);
+  const coefontId = getCoefontConfig(message.member.id)
+
+  const resource = readableStream = coefontId == undefined
+    ? createAudioResource(
+      await GoogleTextToSpeechReadableStream(text),
+      { inputType: StreamType.OggOpus }
+    )
+    : createAudioResource(
+      await CoefontTextToSpeechReadableStream(text, coefontId),
+      { inputType: StreamType.Arbitrary }
+    )
+
   player.play(resource);
 });
 

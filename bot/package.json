@@ -9,6 +9,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "axios": "^0.26.1",
     "@discordjs/opus": "^0.5.3",
     "@discordjs/voice": "^0.8.0",
     "@google-cloud/text-to-speech": "^3.1.3",
