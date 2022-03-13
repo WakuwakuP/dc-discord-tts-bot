@@ -196,18 +196,22 @@ const channelExit = async (ch, user) => {
 
 const joinChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
-  const guild = target.guild;
-  const sendChannel = await guild.channels.cache.find(val => val.name === target.name);
-  await sendChannel.send(`Join: ${user.displayName}`)
-    .catch(console.error);
+  if (target.hasOwnProperty('guild')) {
+    const guild = target.guild;
+    const sendChannel = await guild.channels.cache.find(val => val.name === target.name);
+    await sendChannel.send(`Join: ${user.displayName}`)
+      .catch(console.error);
+  }
 }
 
 const leaveChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
-  const guild = target.guild;
-  const sendChannel = await guild.channels.cache.find(val => val.name === target.name);
-  await sendChannel.send(`Leave: ${user.displayName}`)
-    .catch(console.error);
+  if (target.hasOwnProperty('guild')) {
+    const guild = target.guild;
+    const sendChannel = await guild.channels.cache.find(val => val.name === target.name);
+    await sendChannel.send(`Leave: ${user.displayName}`)
+      .catch(console.error);
+  }
 }
 
 const options = {
