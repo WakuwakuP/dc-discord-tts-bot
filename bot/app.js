@@ -100,22 +100,23 @@ const CoefontTextToSpeechReadableStream = async (text, coefontConfig) => {
     .update(date + data)
     .digest('hex');
 
-  const response = await axios.post('https://api.coefont.cloud/v1/text2speech', data, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': COEFONT_ACCESS_KEY,
-      'X-Coefont-Date': date,
-      'X-Coefont-Content': signature,
-    },
-    responseType: 'stream',
-  });
-
-  if ([400, 401, 403, 404, 500].some(status => status == response.status)) {
-    console.log(`${response.status}: ${response.data.message}`)
-    return new Readable({ read() {} });
+  try {
+    const response = await axios.post('https://api.coefont.cloud/v1/text2speech', data, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': COEFONT_ACCESS_KEY,
+        'X-Coefont-Date': date,
+        'X-Coefont-Content': signature,
+      },
+      responseType: 'stream',
+    });
+    return response.data;
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      console.log(`CoeFont: ${err.response.status}: ${err.response.statusText}`)
+    }
+    return undefined;
   }
-
-  return response.data;
 }
 
 const client = new textToSpeech.TextToSpeechClient({
@@ -304,15 +305,28 @@ discordClient.on('messageCreate', async (message) => {
   conn.subscribe(player);
   const coefontConfig = getCoefontConfig(message.member.id)
 
-  const resource = coefontConfig == undefined
-    ? createAudioResource(
+  if (coefontConfig == undefined) {
+    const resource = createAudioResource(
       await GoogleTextToSpeechReadableStream(text),
       { inputType: StreamType.OggOpus }
     )
-    : createAudioResource(
-      await CoefontTextToSpeechReadableStream(text, coefontConfig),
-      { inputType: StreamType.Arbitrary }
+    player.play(resource)
+    return;
+  }
+  const readable = await CoefontTextToSpeechReadableStream(text, coefontConfig);
+
+  if (readable == undefined) {
+    const resource = createAudioResource(
+      await GoogleTextToSpeechReadableStream(text),
+      { inputType: StreamType.OggOpus }
     )
+    player.play(resource)
+    return;
+  }
+  const resource = createAudioResource(
+    readable,
+    { inputType: StreamType.Arbitrary }
+  )
 
   player.play(resource);
 });
