@@ -238,6 +238,10 @@ discordClient.on('voiceStateUpdate', async (oldState, newState) => {
   if (oldState.channelId === newState.channelId) {
     return;
   }
+  // AFKに指定してあるチャンネルは何もしない
+  if (AFK_CHANNELS.includes(newChannel.channelId)) {
+    return;
+  }
   if (oldState.channelId != null) {
     const oldChannel = oldState.guild.channels.cache.get(oldState.channelId);
     if (oldChannel.members.size == 0) {
@@ -253,10 +257,6 @@ discordClient.on('voiceStateUpdate', async (oldState, newState) => {
     }
   }
   if (newState.channelId != null) {
-    // AFKに指定してあるチャンネルは何もしない
-    if (AFK_CHANNELS.includes(newChannel.channelId)) {
-      return;
-    }
     const newChannel = newState.guild.channels.cache.get(newState.channelId);
     if (newChannel.members.size == 1) {
       textChannel = await textChannelCreate(newChannel, newState.member);
