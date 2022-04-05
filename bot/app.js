@@ -17,7 +17,9 @@ const envs = [
   'DISCORD_TOKEN',
   'DISCORD_GUILD_ID',
   'GOOGLE_CLIENT_EMAIL',
-  'GOOGLE_PRIVATE_KEY'
+  'GOOGLE_PRIVATE_KEY',
+  'COEFONT_ACCESS_KEY',
+  'COEFONT_CLIENT_SECRET',
 ];
 
 let lacksEnv = false;
@@ -44,6 +46,8 @@ const {
   COEFONT_ACCESS_KEY,
   COEFONT_CLIENT_SECRET,
 } = process.env;
+
+const AFK_CHANNELS = process.env.AFK_CHANNELS.split(',');
 
 
 // テキスト → ReadableStream
@@ -249,6 +253,10 @@ discordClient.on('voiceStateUpdate', async (oldState, newState) => {
     }
   }
   if (newState.channelId != null) {
+    // AFKに指定してあるチャンネルは何もしない
+    if (AFK_CHANNELS.includes(newChannel.channelId)) {
+      return;
+    }
     const newChannel = newState.guild.channels.cache.get(newState.channelId);
     if (newChannel.members.size == 1) {
       textChannel = await textChannelCreate(newChannel, newState.member);
