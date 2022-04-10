@@ -288,8 +288,11 @@ discordClient.on('messageCreate', async (message) => {
 
   const text = message
     .content
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/<a?:.*?:\d+>/g, '')   // カスタム絵文字を除去
+    .replace(/https?:\/\/\S+/g, '')     // URL 削除
+    .replace(/<@!?\d+>/g, '')           // User 削除
+    .replace(/<#\d+>/g, '')             // Channel 削除
+    .replace(/<@&\d+>/g, '')            // Role 削除
+    .replace(/<a?:.*?:\d+>/g, '')       // 絵文字・カスタム絵文字を除去
     .slice(0, 50);
 
   // テキストが空なら何もしない
