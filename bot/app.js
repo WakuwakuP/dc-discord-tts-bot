@@ -1,4 +1,3 @@
-
 const axios = require('axios');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -61,7 +60,8 @@ const GoogleTextToSpeechReadableStream = async (text) => {
     },
     audioConfig: {
       audioEncoding: 'OGG_OPUS',
-      speakingRate: 1.2
+      speakingRate: 1.2,
+      volumeGainDb: -0.2
     }
   };
 
