@@ -87,10 +87,14 @@ const getCoefontConfig = (memberId) => {
   try {
     const jsonObj = JSON.parse(fs.readFileSync('./config/coefont.json', 'utf8'));
     const index = jsonObj.findIndex(obj => obj.id == memberId)
-    if (index == -1) {
-      return undefined;
+    const defaultIndex = jsonObj.findIndex(obj => obj.id == 'default')
+    if (index != -1) {
+      return jsonObj[index];
     }
-    return jsonObj[index];
+    if (defaultIndex != -1) {
+      return jsonObj[defaultIndex];
+    }
+    return undefined;
   } catch(error) {
     console.log('/config/coefont.json not found');
     return undefined;
@@ -100,6 +104,9 @@ const getCoefontConfig = (memberId) => {
 const CoefontTextToSpeechReadableStream = async (text, coefontConfig) => {
   const coefontData = Object.assign(coefontConfig)
   delete coefontConfig.id
+  if ('format' in coefontConfig) {
+    delete coefontConfig.format
+  }
 
   const data = JSON.stringify({
     text,
