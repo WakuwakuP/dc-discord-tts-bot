@@ -1,7 +1,12 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const fs = require('fs');
-const Discord = require("discord.js");
+const  {
+  Client,
+  GatewayIntentBits,
+  PermissionsBitField,
+  ChannelType,
+}  = require("discord.js");
 const {
   joinVoiceChannel,
   createAudioPlayer,
@@ -79,13 +84,17 @@ const GoogleTextToSpeechReadableStream = async (text) => {
  * @returns string | undefined
  */
 const getCoefontConfig = (memberId) => {
-  const jsonObj = JSON.parse(fs.readFileSync('./config/coefont.json', 'utf8'));
-  const index = jsonObj.findIndex(obj => obj.id == memberId)
-  if (index == -1) {
+  try {
+    const jsonObj = JSON.parse(fs.readFileSync('./config/coefont.json', 'utf8'));
+    const index = jsonObj.findIndex(obj => obj.id == memberId)
+    if (index == -1) {
+      return undefined;
+    }
+    return jsonObj[index];
+  } catch(error) {
+    console.log('/config/coefont.json not found');
     return undefined;
   }
-
-  return jsonObj[index];
 }
 
 const CoefontTextToSpeechReadableStream = async (text, coefontConfig) => {
@@ -135,24 +144,32 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
     const guild = voiceChannel.guild;
     // チャンネル名の後ろにボイスチャンネルのIDを付与して一意に
     let chName = CHANNEL_PREFIX + voiceChannel.name + "_" + voiceChannel.id;
-    let botRole = guild.me;
-    let result = await guild.channels.create(chName, {
+    let botRole = guild.members.me;
+    let result = await guild.channels.create({
+      name: chName,
       parent: voiceChannel.parent,
-      type: "text",
+      type: ChannelType.GuildText,
       // denyでeveryoneユーザは見れないように
       // allowでボイスチャンネルに参加したメンバーは見れるように
       permissionOverwrites: [
         {
           id: guild.roles.everyone.id,
-          deny: ["VIEW_CHANNEL", "CREATE_INSTANT_INVITE"]
+          deny: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.CreateInstantInvite,
+          ],
         },
         {
           id: voiceJoinedMember.id,
-          allow: ["VIEW_CHANNEL"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+          ],
         },
         {
           id: botRole.id,
-          allow: ["VIEW_CHANNEL"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+          ],
         }
       ],
     });
@@ -183,7 +200,7 @@ const textChannelDelete = async (ch) => {
 const channelJoin = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
-    target.permissionOverwrites.edit(user, { VIEW_CHANNEL: true });
+    target.permissionOverwrites.edit(user, { ViewChannel: true });
     return target;
   } else {
     console.log("チャンネルがないンゴ");
@@ -193,7 +210,7 @@ const channelJoin = async (ch, user) => {
 const channelExit = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
-    target.permissionOverwrites.edit(user, { VIEW_CHANNEL: false });
+    target.permissionOverwrites.edit(user, { ViewChannel: false });
   } else {
     console.log("チャンネルがないンゴ");
   }
@@ -220,10 +237,10 @@ const leaveChannelSendNotification = async (ch, user) => {
 }
 
 const options = {
-  intents: ["GUILDS", "GUILD_MESSAGES", 'GUILD_VOICE_STATES'],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.MessageContent],
 };
 
-const discordClient = new Discord.Client(options);
+const discordClient = new Client(options);
 
 discordClient.on('voiceStateUpdate', async (oldState, newState) => {
   const conn = getVoiceConnection(DISCORD_GUILD_ID)
@@ -260,7 +277,7 @@ discordClient.on('voiceStateUpdate', async (oldState, newState) => {
     }
     const newChannel = newState.guild.channels.cache.get(newState.channelId);
     if (newChannel.members.size == 1) {
-      textChannel = await textChannelCreate(newChannel, newState.member);
+      await textChannelCreate(newChannel, newState.member);
     } else {
       if (newMember.user.bot !== true) {
         await channelJoin(newChannel, newState.member);
@@ -293,13 +310,16 @@ discordClient.on('messageCreate', async (message) => {
     .replace(/<#\d+>/g, '')             // Channel 削除
     .replace(/<@&\d+>/g, '')            // Role 削除
     .replace(/<a?:.*?:\d+>/g, '')       // 絵文字・カスタム絵文字を除去
-    .slice(0, 50);
+    .slice(0, 200);                    // 200文字以内にする
+
+  console.log(`[messageCreate] ${message.member.displayName}: ${message.content}`);
 
   // テキストが空なら何もしない
   if (!text) { return; }
 
   // 誰もいなかったら参加しない
   if (channel.members.size < 1) { return; }
+
 
   // 発言者の参加チャンネルが、
   // 今のBot参加チャンネルと違うなら移動する
