@@ -22,8 +22,6 @@ const envs = [
   "DISCORD_GUILD_ID",
   "GOOGLE_CLIENT_EMAIL",
   "GOOGLE_PRIVATE_KEY",
-  "COEFONT_ACCESS_KEY",
-  "COEFONT_CLIENT_SECRET",
 ];
 
 let lacksEnv = false;
@@ -47,8 +45,6 @@ const {
   DISCORD_GUILD_ID,
   GOOGLE_CLIENT_EMAIL,
   GOOGLE_PRIVATE_KEY,
-  COEFONT_ACCESS_KEY,
-  COEFONT_CLIENT_SECRET,
 } = process.env;
 
 const AFK_CHANNELS = process.env.AFK_CHANNELS.split(",");
