@@ -76,76 +76,6 @@ const GoogleTextToSpeechReadableStream = async (text) => {
   return stream;
 };
 
-/**
- * MemberIdに紐付けたCoefontIdを返す。
- * ない場合は undefined
- * @param {string} memberId
- * @returns string | undefined
- */
-const getCoefontConfig = (memberId) => {
-  try {
-    const jsonObj = JSON.parse(
-      fs.readFileSync("./config/coefont.json", "utf8")
-    );
-    const index = jsonObj.findIndex((obj) => obj.id == memberId);
-    const defaultIndex = jsonObj.findIndex((obj) => obj.id == "default");
-    if (index != -1) {
-      return jsonObj[index];
-    }
-    if (defaultIndex != -1) {
-      return jsonObj[defaultIndex];
-    }
-    return undefined;
-  } catch (error) {
-    console.log("/config/coefont.json not found");
-    return undefined;
-  }
-};
-
-const CoefontTextToSpeechReadableStream = async (text, coefontConfig) => {
-  const coefontData = Object.assign(coefontConfig);
-  delete coefontConfig.id;
-  if ("format" in coefontConfig) {
-    delete coefontConfig.format;
-  }
-
-  const data = JSON.stringify({
-    text,
-    ...coefontData,
-  });
-
-  const date = String(Math.floor(Date.now() / 1000));
-
-  const signature = crypto
-    .createHmac("sha256", COEFONT_CLIENT_SECRET)
-    .update(date + data)
-    .digest("hex");
-
-  try {
-    const response = await axios.post(
-      "https://api.coefont.cloud/v2/text2speech",
-      data,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: COEFONT_ACCESS_KEY,
-          "X-Coefont-Date": date,
-          "X-Coefont-Content": signature,
-        },
-        responseType: "stream",
-      }
-    );
-    return response.data;
-  } catch (err) {
-    if (axios.isAxiosError(err)) {
-      console.log(
-        `CoeFont: ${err.response.status}: ${err.response.statusText}`
-      );
-    }
-    return undefined;
-  }
-};
-
 const client = new textToSpeech.TextToSpeechClient({
   credentials: {
     client_email: GOOGLE_CLIENT_EMAIL,
@@ -153,6 +83,13 @@ const client = new textToSpeech.TextToSpeechClient({
   },
 });
 
+/**
+ * テキストチャンネルを作成する関数です。
+ *
+ * @param {VoiceChannel} voiceChannel - ボイスチャンネルオブジェクト
+ * @param {GuildMember} voiceJoinedMember - ボイスチャンネルに参加したメンバーオブジェクト
+ * @returns {Promise<GuildTextChannel>} - 作成されたテキストチャンネルオブジェクトのPromise
+ */
 const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
   try {
     const guild = voiceChannel.guild;
@@ -191,6 +128,12 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
   }
 };
 
+/**
+ * 指定されたボイスチャンネルを検索します。
+ *
+ * @param {VoiceChannel} voiceChannel - 検索対象のボイスチャンネル
+ * @returns {Channel} - 検索結果のチャンネル
+ */
 const channelFind = async (voiceChannel) => {
   const guild = voiceChannel.guild;
   const searchCondition = voiceChannel.id;
@@ -200,6 +143,12 @@ const channelFind = async (voiceChannel) => {
   return result;
 };
 
+/**
+ * テキストチャンネルを削除します。
+ *
+ * @param {string} ch - 削除するチャンネルの名前。
+ * @returns {Promise<void>} - チャンネルが削除された時に解決される Promise。
+ */
 const textChannelDelete = async (ch) => {
   const target = await channelFind(ch);
   try {
@@ -217,11 +166,17 @@ const textChannelDelete = async (ch) => {
   }
 };
 
+/**
+ * チャンネルを入室時に呼ぶ、ユーザーにチャンネルの表示権限を付与します。
+ *
+ * @param {Channel} ch - 参加するチャンネル。
+ * @param {User} user - 権限を付与するユーザー。
+ * @returns {Promise<void>} - 操作が完了したときに解決されるプロミス。
+ */
 const channelJoin = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
     target.permissionOverwrites.edit(user, { ViewChannel: true });
-    return target;
   } else {
     console.log("チャンネルがないンゴ");
   }
@@ -230,7 +185,14 @@ const channelJoin = async (ch, user) => {
   );
 };
 
-const channelExit = async (ch, user) => {
+/**
+ * チャンネルを退出時に呼ぶ、ユーザーの権限を更新します。
+ *
+ * @param {Channel} ch - 退出するチャンネル。
+ * @param {User} user - 権限を更新するユーザー。
+ * @returns {Promise<void>} - 操作が完了したときに解決されるプロミス。
+ */
+const channelLeave = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
     target.permissionOverwrites.edit(user, { ViewChannel: false });
@@ -242,6 +204,13 @@ const channelExit = async (ch, user) => {
   );
 };
 
+/**
+ * ユーザーがチャンネルに参加したときに通知を送信します。
+ *
+ * @param {string} ch - チャンネル名。
+ * @param {object} user - ユーザーオブジェクト。
+ * @returns {Promise<void>} - 通知が送信されると解決するプロミス。
+ */
 const joinChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
@@ -256,6 +225,13 @@ const joinChannelSendNotification = async (ch, user) => {
   }
 };
 
+/**
+ * チャンネルから退出したときに通知を送信します。
+ *
+ * @param {string} ch - チャンネル名
+ * @param {object} user - 退出したユーザーのオブジェクト
+ * @returns {Promise<void>}
+ */
 const leaveChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
   if (target != null) {
@@ -304,10 +280,11 @@ discordClient.on("voiceStateUpdate", async (oldState, newState) => {
       await textChannelDelete(oldChannel);
     } else {
       if (newMember.user.bot !== true) {
-        await channelExit(oldChannel, newState.member);
+        await channelLeave(oldChannel, newState.member);
       }
     }
   }
+
   if (newState.channelId != null) {
     // AFKに指定してあるチャンネルは何もしない
     if (AFK_CHANNELS.includes(newState.channelId)) {
@@ -380,30 +357,11 @@ discordClient.on("messageCreate", async (message) => {
     : currentConnection;
   const player = createAudioPlayer();
   conn.subscribe(player);
-  const coefontConfig = getCoefontConfig(message.member.id);
 
-  if (coefontConfig == undefined) {
-    const resource = createAudioResource(
-      await GoogleTextToSpeechReadableStream(text),
-      { inputType: StreamType.OggOpus }
-    );
-    player.play(resource);
-    return;
-  }
-  const readable = await CoefontTextToSpeechReadableStream(text, coefontConfig);
-
-  if (readable == undefined) {
-    const resource = createAudioResource(
-      await GoogleTextToSpeechReadableStream(text),
-      { inputType: StreamType.OggOpus }
-    );
-    player.play(resource);
-    return;
-  }
-  const resource = createAudioResource(readable, {
-    inputType: StreamType.Arbitrary,
-  });
-
+  const resource = createAudioResource(
+    await GoogleTextToSpeechReadableStream(text),
+    { inputType: StreamType.OggOpus }
+  );
   player.play(resource);
 });
 
