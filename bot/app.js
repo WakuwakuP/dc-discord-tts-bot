@@ -184,11 +184,11 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
       ],
     });
     CHANNEL_ID_LIST.push(result.id);
+    console.log(`CREATE    : created text channel #${chName}(${result.id})`);
     return result;
   } catch (err) {
     console.log(err);
   }
-  console.log(`CREATE    : created text channel #${chName}(${result.id})`);
 };
 
 const channelFind = async (voiceChannel) => {
