@@ -207,6 +207,7 @@ const textChannelDelete = async (ch) => {
   } else {
     console.log("削除するチャンネルがないンゴ");
   }
+  console.log(`DELETE    : deleted text channel #${target.name}(${target.id})`);
 };
 
 const channelJoin = async (ch, user) => {
@@ -217,6 +218,9 @@ const channelJoin = async (ch, user) => {
   } else {
     console.log("チャンネルがないンゴ");
   }
+  console.log(
+    `PERMISSION: added view channel #${target.name}(${target.id}) to ${user.displayName}(${user.id})`
+  );
 };
 
 const channelExit = async (ch, user) => {
@@ -226,6 +230,9 @@ const channelExit = async (ch, user) => {
   } else {
     console.log("チャンネルがないンゴ");
   }
+  console.log(
+    `PERMISSION: deleted view channel #${target.name}(${target.id}) to ${user.displayName}(${user.id})`
+  );
 };
 
 const joinChannelSendNotification = async (ch, user) => {
@@ -236,6 +243,9 @@ const joinChannelSendNotification = async (ch, user) => {
       (val) => val.name === target.name
     );
     await sendChannel.send(`Join: ${user.displayName}`).catch(console.error);
+    console.log(
+      `JOIN      : ${user.displayName} joined channel #${sendChannel.name}(${sendChannel.id})`
+    );
   }
 };
 
@@ -247,6 +257,9 @@ const leaveChannelSendNotification = async (ch, user) => {
       (val) => val.name === target.name
     );
     await sendChannel.send(`Leave: ${user.displayName}`).catch(console.error);
+    console.log(
+      `LEAVE     : ${user.displayName} leaved channel #${sendChannel.name}(${sendChannel.id})`
+    );
   }
 };
 
