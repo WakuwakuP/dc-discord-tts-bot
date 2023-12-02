@@ -1,4 +1,4 @@
-version: '3.3'
+version: "3.3"
 
 services:
   bot:
@@ -14,3 +14,10 @@ services:
       - COEFONT_ACCESS_KEY=${COEFONT_ACCESS_KEY}
       - COEFONT_CLIENT_SECRET=${COEFONT_CLIENT_SECRET}
       - AFK_CHANNELS=${AFK_CHANNELS}
+    logging:
+      driver: syslog
+      options:
+        syslog-address: ${SYSLOG_ADDRESS}
+        syslog-tls-ca-cert: ${SYSLOG_TLS_CA_CERT}
+        syslog-format: ${SYSLOG_FORMAT}
+        tag: ${SYSLOG_TAG}
