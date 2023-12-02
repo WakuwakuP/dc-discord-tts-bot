@@ -123,7 +123,7 @@ const CoefontTextToSpeechReadableStream = async (text, coefontConfig) => {
 
   try {
     const response = await axios.post(
-      "https://api.coefont.cloud/v1/text2speech",
+      "https://api.coefont.cloud/v2/text2speech",
       data,
       {
         headers: {
@@ -202,13 +202,19 @@ const channelFind = async (voiceChannel) => {
 
 const textChannelDelete = async (ch) => {
   const target = await channelFind(ch);
-  if (target != null) {
-    CHANNEL_ID_LIST = CHANNEL_ID_LIST.filter((id) => id !== target.id);
-    target.delete().catch(console.error);
-  } else {
-    console.log("削除するチャンネルがないンゴ");
+  try {
+    if (target != null) {
+      CHANNEL_ID_LIST = CHANNEL_ID_LIST.filter((id) => id !== target.id);
+      await target.delete();
+      console.log(
+        `DELETE    : deleted text channel #${target.name}(${target.id})`
+      );
+    } else {
+      console.log("no channels to delete.");
+    }
+  } catch (err) {
+    console.log("API no channels to delete.\n" + err);
   }
-  console.log(`DELETE    : deleted text channel #${target.name}(${target.id})`);
 };
 
 const channelJoin = async (ch, user) => {
@@ -345,10 +351,6 @@ discordClient.on("messageCreate", async (message) => {
     .replace(/<a?:.*?:\d+>/g, "") // 絵文字・カスタム絵文字を除去
     .slice(0, 200); // 200文字以内にする
 
-  console.log(
-    `[messageCreate] ${message.member.displayName}: ${message.content}`
-  );
-
   // テキストが空なら何もしない
   if (!text) {
     return;
@@ -358,6 +360,8 @@ discordClient.on("messageCreate", async (message) => {
   if (channel.members.size < 1) {
     return;
   }
+
+  console.log(`TTS_LOG  : ${message.member.displayName}: ${message.content}`);
 
   // 発言者の参加チャンネルが、
   // 今のBot参加チャンネルと違うなら移動する
