@@ -56,12 +56,11 @@ const GoogleTextToSpeechReadableStream = async (text) => {
     input: { text },
     voice: {
       languageCode: "ja-JP",
-      name: "ja-JP-Wavenet-A",
+      name: "ja-JP-Neural2-B",
     },
     audioConfig: {
       audioEncoding: "OGG_OPUS",
       speakingRate: 1.2,
-      volumeGainDb: -0.2,
     },
   };
 
