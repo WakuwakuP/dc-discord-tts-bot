@@ -1,6 +1,3 @@
-const axios = require("axios");
-const crypto = require("crypto");
-const fs = require("fs");
 const {
   Client,
   GatewayIntentBits,
@@ -147,9 +144,9 @@ const channelFind = async (voiceChannel) => {
 const textChannelDelete = async (ch) => {
   const target = await channelFind(ch);
   try {
-    if (target.length !== 0) {
-      CHANNEL_ID_LIST = CHANNEL_ID_LIST.filter((id) => id !== target.id);
+    if (target.size > 0) {
       target.each((ch) => {
+        CHANNEL_ID_LIST = CHANNEL_ID_LIST.filter((id) => id !== ch.id);
         ch.delete();
         console.log(`DELETE    : deleted text channel #${ch.name}(${ch.id})`);
       });
@@ -170,7 +167,7 @@ const textChannelDelete = async (ch) => {
  */
 const channelJoin = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target.length !== 0) {
+  if (target.size > 0) {
     target.first().permissionOverwrites.edit(user, { ViewChannel: true });
   } else {
     console.log("チャンネルがないンゴ");
@@ -189,7 +186,7 @@ const channelJoin = async (ch, user) => {
  */
 const channelLeave = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target.length !== 0) {
+  if (target.size > 0) {
     target.first().permissionOverwrites.edit(user, { ViewChannel: false });
   } else {
     console.log("チャンネルがないンゴ");
@@ -208,7 +205,7 @@ const channelLeave = async (ch, user) => {
  */
 const joinChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target.length !== 0) {
+  if (target.size > 0) {
     const guild = target.first().guild;
     const sendChannel = await guild.channels.cache.find(
       (val) => val.name === target.first().name
@@ -229,8 +226,11 @@ const joinChannelSendNotification = async (ch, user) => {
  */
 const leaveChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target.length !== 0) {
-    const guild = target.first().guild;
+  if (target.size > 0) {
+    const guild = target.first()?.guild;
+    if (!guild) {
+      return;
+    }
     const sendChannel = await guild.channels.cache.find(
       (val) => val.name === target.first().name
     );
@@ -287,6 +287,7 @@ discordClient.on("voiceStateUpdate", async (oldState, newState) => {
     }
     const newChannel = newState.guild.channels.cache.get(newState.channelId);
     if (newChannel.members.size == 1) {
+      await textChannelDelete(newChannel);
       await textChannelCreate(newChannel, newState.member);
     } else {
       if (newMember.user.bot !== true) {
