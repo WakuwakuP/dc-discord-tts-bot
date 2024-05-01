@@ -127,12 +127,12 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
  * 指定されたボイスチャンネルを検索します。
  *
  * @param {VoiceChannel} voiceChannel - 検索対象のボイスチャンネル
- * @returns {Channel} - 検索結果のチャンネル
+ * @returns {Collection<Channel>} - 検索結果のチャンネル
  */
 const channelFind = async (voiceChannel) => {
   const guild = voiceChannel.guild;
   const searchCondition = voiceChannel.id;
-  const result = guild.channels.cache.find((val) =>
+  const result = guild.channels.cache.filter((val) =>
     val.name.endsWith(searchCondition)
   );
   return result;
@@ -147,12 +147,12 @@ const channelFind = async (voiceChannel) => {
 const textChannelDelete = async (ch) => {
   const target = await channelFind(ch);
   try {
-    if (target != null) {
+    if (target.length !== 0) {
       CHANNEL_ID_LIST = CHANNEL_ID_LIST.filter((id) => id !== target.id);
-      await target.delete();
-      console.log(
-        `DELETE    : deleted text channel #${target.name}(${target.id})`
-      );
+      target.each((ch) => {
+        ch.delete();
+        console.log(`DELETE    : deleted text channel #${ch.name}(${ch.id})`);
+      });
     } else {
       console.log("no channels to delete.");
     }
@@ -170,8 +170,8 @@ const textChannelDelete = async (ch) => {
  */
 const channelJoin = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target != null) {
-    target.permissionOverwrites.edit(user, { ViewChannel: true });
+  if (target.length !== 0) {
+    target.first().permissionOverwrites.edit(user, { ViewChannel: true });
   } else {
     console.log("チャンネルがないンゴ");
   }
@@ -189,8 +189,8 @@ const channelJoin = async (ch, user) => {
  */
 const channelLeave = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target != null) {
-    target.permissionOverwrites.edit(user, { ViewChannel: false });
+  if (target.length !== 0) {
+    target.first().permissionOverwrites.edit(user, { ViewChannel: false });
   } else {
     console.log("チャンネルがないンゴ");
   }
@@ -208,10 +208,10 @@ const channelLeave = async (ch, user) => {
  */
 const joinChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target != null) {
-    const guild = target.guild;
+  if (target.length !== 0) {
+    const guild = target.first().guild;
     const sendChannel = await guild.channels.cache.find(
-      (val) => val.name === target.name
+      (val) => val.name === target.first().name
     );
     await sendChannel.send(`Join: ${user.displayName}`).catch(console.error);
     console.log(
@@ -229,10 +229,10 @@ const joinChannelSendNotification = async (ch, user) => {
  */
 const leaveChannelSendNotification = async (ch, user) => {
   const target = await channelFind(ch);
-  if (target != null) {
-    const guild = target.guild;
+  if (target.length !== 0) {
+    const guild = target.first().guild;
     const sendChannel = await guild.channels.cache.find(
-      (val) => val.name === target.name
+      (val) => val.name === target.first().name
     );
     await sendChannel.send(`Leave: ${user.displayName}`).catch(console.error);
     console.log(
