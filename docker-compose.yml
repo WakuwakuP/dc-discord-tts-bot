@@ -6,6 +6,7 @@ services:
     restart: always
     volumes:
       - ./docker/bot/config:/bot/config
+      - ./docker/bot/data:/bot/data
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}

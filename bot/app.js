@@ -11,8 +11,10 @@ const {
   StreamType,
   getVoiceConnection,
 } = require("@discordjs/voice");
+const Keyv = require("keyv");
 const textToSpeech = require("@google-cloud/text-to-speech");
 const { Readable } = require("stream");
+const { setTimeout } = require("timers/promises");
 
 const envs = [
   "DISCORD_TOKEN",
@@ -35,8 +37,6 @@ if (lacksEnv) {
 
 const CHANNEL_PREFIX = "🔑";
 
-let CHANNEL_ID_LIST = [];
-
 const {
   DISCORD_TOKEN,
   DISCORD_GUILD_ID,
@@ -45,6 +45,26 @@ const {
 } = process.env;
 
 const AFK_CHANNELS = process.env.AFK_CHANNELS.split(",");
+
+const channels = new Keyv("sqlite://data/db.sqlite", {
+  table: "channels",
+});
+
+const setChannel = async (channelId) => {
+  return await channels.set(channelId);
+};
+
+const getChannel = async (channelId) => {
+  return await channels.get(channelId);
+};
+
+const hasChannel = async (channelId) => {
+  return await channels.has(channelId);
+};
+
+const deleteChannel = async (channelId) => {
+  return await channels.delete(channelId);
+};
 
 // テキスト → ReadableStream
 // Cloud Text-to-Speech APIを使用
@@ -112,7 +132,7 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
         },
       ],
     });
-    CHANNEL_ID_LIST.push(result.id);
+    setChannel(result.id);
     console.log(`CREATE    : created text channel #${chName}(${result.id})`);
     return result;
   } catch (err) {
@@ -143,11 +163,12 @@ const channelFind = async (voiceChannel) => {
  */
 const textChannelDelete = async (ch) => {
   const target = await channelFind(ch);
+
   try {
     if (target.size > 0) {
-      target.each((ch) => {
-        CHANNEL_ID_LIST = CHANNEL_ID_LIST.filter((id) => id !== ch.id);
-        ch.delete();
+      target.each(async (ch) => {
+        await deleteChannel(ch.id);
+        await ch.delete();
         console.log(`DELETE    : deleted text channel #${ch.name}(${ch.id})`);
       });
     } else {
@@ -253,6 +274,10 @@ const options = {
 const discordClient = new Client(options);
 
 discordClient.on("voiceStateUpdate", async (oldState, newState) => {
+  console.log(
+    `VOICE_LOG : ${newState.member.id}(${newState.member.displayName}) ${oldState.channelId} -> ${newState.channelId}`
+  );
+
   const conn = getVoiceConnection(DISCORD_GUILD_ID);
   if (conn) {
     const vcChannelId = conn.joinConfig.channelId;
@@ -272,7 +297,9 @@ discordClient.on("voiceStateUpdate", async (oldState, newState) => {
       await leaveChannelSendNotification(oldChannel, oldState.member);
     }
     if (oldChannel.members.size == 0) {
-      await textChannelDelete(oldChannel);
+      if (newMember.user.bot !== true) {
+        await textChannelDelete(oldChannel);
+      }
     } else {
       if (newMember.user.bot !== true) {
         await channelLeave(oldChannel, newState.member);
@@ -311,7 +338,7 @@ discordClient.on("messageCreate", async (message) => {
     !message.member.voice.selfMute ||
     guild.id !== DISCORD_GUILD_ID ||
     !channel ||
-    !CHANNEL_ID_LIST.includes(message.channel.id)
+    !(await hasChannel(message.channel.id))
   ) {
     return;
   }
