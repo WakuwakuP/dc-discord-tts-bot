@@ -5,7 +5,8 @@
 VC専用プライベートチャット & 読み上げBot
 
 Google Cloud text-to-speech API
-CoeFont API
+
+https://github.com/user-attachments/assets/3a1e5afe-efad-4926-b3cb-f09223810fdf
 
 ## Installation
 
