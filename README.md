@@ -6,7 +6,11 @@ VC専用プライベートチャット & 読み上げBot
 
 Google Cloud text-to-speech API
 
+VCチャンネルに接続したら自動でテキストチャンネルを作成
+
 https://github.com/user-attachments/assets/e9c8fcda-f88a-42cb-ab7c-225c51fbfe2c
+
+ミュート状態でチャットをしたらBotによる読み上げ
 
 https://github.com/user-attachments/assets/73bb7ac4-0db0-4484-b16d-5a8e84b61761
 
