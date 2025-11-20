@@ -1,28 +1,36 @@
-const {
+import {
   Client,
   GatewayIntentBits,
   PermissionsBitField,
   ChannelType,
-} = require("discord.js");
-const {
+  VoiceChannel,
+  GuildMember,
+  TextChannel,
+  Collection,
+  VoiceState,
+  Message,
+} from "discord.js";
+import {
   joinVoiceChannel,
   createAudioPlayer,
   createAudioResource,
   StreamType,
   getVoiceConnection,
-} = require("@discordjs/voice");
-const Keyv = require("keyv");
-const textToSpeech = require("@google-cloud/text-to-speech");
-const { Readable } = require("stream");
-const { setTimeout } = require("timers/promises");
+  VoiceConnection,
+} from "@discordjs/voice";
+import Keyv from "keyv";
+import KeyvSqlite from "@keyv/sqlite";
+import textToSpeech from "@google-cloud/text-to-speech";
+import { Readable } from "stream";
 
+// Environment variable validation
 const envs = [
   "DISCORD_TOKEN",
   "DISCORD_GUILD_ID",
   "GOOGLE_CLIENT_EMAIL",
   "GOOGLE_PRIVATE_KEY",
   "AFK_CHANNELS",
-];
+] as const;
 
 let lacksEnv = false;
 for (const envName of envs) {
@@ -38,38 +46,30 @@ if (lacksEnv) {
 
 const CHANNEL_PREFIX = "🔑";
 
-const {
-  DISCORD_TOKEN,
-  DISCORD_GUILD_ID,
-  GOOGLE_CLIENT_EMAIL,
-  GOOGLE_PRIVATE_KEY,
-} = process.env;
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN!;
+const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID!;
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL!;
+const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY!;
 
-const AFK_CHANNELS = process.env.AFK_CHANNELS.split(",").filter(Boolean);
+const AFK_CHANNELS = process.env.AFK_CHANNELS!.split(",").filter(Boolean);
 
-const channels = new Keyv("sqlite://data/db.sqlite", {
-  table: "channels",
+const channels = new Keyv({
+  store: new KeyvSqlite("sqlite://data/db.sqlite"),
+  namespace: "channels",
 });
 
-const setChannel = async (channelId) => {
+const setChannel = async (channelId: string): Promise<boolean> => {
   try {
-    return await channels.set(channelId);
+    return await channels.set(channelId, true);
   } catch (err) {
     console.error(`Error setting channel ${channelId}:`, err);
     throw err;
   }
 };
 
-const getChannel = async (channelId) => {
-  try {
-    return await channels.get(channelId);
-  } catch (err) {
-    console.error(`Error getting channel ${channelId}:`, err);
-    return null;
-  }
-};
 
-const hasChannel = async (channelId) => {
+
+const hasChannel = async (channelId: string): Promise<boolean> => {
   try {
     return await channels.has(channelId);
   } catch (err) {
@@ -78,7 +78,7 @@ const hasChannel = async (channelId) => {
   }
 };
 
-const deleteChannel = async (channelId) => {
+const deleteChannel = async (channelId: string): Promise<boolean> => {
   try {
     return await channels.delete(channelId);
   } catch (err) {
@@ -90,12 +90,14 @@ const deleteChannel = async (channelId) => {
 /**
  * テキスト → ReadableStream
  * Cloud Text-to-Speech APIを使用してテキストを音声に変換
- * 
- * @param {string} text - 変換するテキスト
- * @returns {Promise<Readable>} - 音声データのストリーム
- * @throws {Error} - TTS API呼び出しに失敗した場合
+ *
+ * @param text - 変換するテキスト
+ * @returns 音声データのストリーム
+ * @throws TTS API呼び出しに失敗した場合
  */
-const GoogleTextToSpeechReadableStream = async (text) => {
+const GoogleTextToSpeechReadableStream = async (
+  text: string
+): Promise<Readable> => {
   try {
     const request = {
       input: { text },
@@ -104,14 +106,16 @@ const GoogleTextToSpeechReadableStream = async (text) => {
         name: "ja-JP-Neural2-B",
       },
       audioConfig: {
-        audioEncoding: "OGG_OPUS",
+        audioEncoding: "OGG_OPUS" as const,
         speakingRate: 1.2,
       },
     };
 
-    const [response] = await client.synthesizeSpeech(request);
+    const [response] = await ttsClient.synthesizeSpeech(request);
     const stream = new Readable({ read() {} });
-    stream.push(response.audioContent);
+    if (response.audioContent) {
+      stream.push(response.audioContent);
+    }
     stream.push(null); // End of stream
 
     return stream;
@@ -121,7 +125,7 @@ const GoogleTextToSpeechReadableStream = async (text) => {
   }
 };
 
-const client = new textToSpeech.TextToSpeechClient({
+const ttsClient = new textToSpeech.TextToSpeechClient({
   credentials: {
     client_email: GOOGLE_CLIENT_EMAIL,
     private_key: GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
@@ -131,16 +135,23 @@ const client = new textToSpeech.TextToSpeechClient({
 /**
  * テキストチャンネルを作成する関数です。
  *
- * @param {VoiceChannel} voiceChannel - ボイスチャンネルオブジェクト
- * @param {GuildMember} voiceJoinedMember - ボイスチャンネルに参加したメンバーオブジェクト
- * @returns {Promise<GuildTextChannel>} - 作成されたテキストチャンネルオブジェクトのPromise
+ * @param voiceChannel - ボイスチャンネルオブジェクト
+ * @param voiceJoinedMember - ボイスチャンネルに参加したメンバーオブジェクト
+ * @returns 作成されたテキストチャンネルオブジェクトのPromise
  */
-const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
+const textChannelCreate = async (
+  voiceChannel: VoiceChannel,
+  voiceJoinedMember: GuildMember
+): Promise<TextChannel> => {
   try {
     const guild = voiceChannel.guild;
     // チャンネル名の後ろにボイスチャンネルのIDを付与して一意に
     const chName = CHANNEL_PREFIX + voiceChannel.name + "_" + voiceChannel.id;
     const botRole = guild.members.me;
+    if (!botRole) {
+      throw new Error("Bot member not found in guild");
+    }
+
     const result = await guild.channels.create({
       name: chName,
       parent: voiceChannel.parent,
@@ -167,7 +178,7 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
     });
     await setChannel(result.id);
     console.log(`CREATE    : created text channel #${chName}(${result.id})`);
-    return result;
+    return result as TextChannel;
   } catch (err) {
     console.error("Error creating text channel:", err);
     throw err;
@@ -177,25 +188,28 @@ const textChannelCreate = async (voiceChannel, voiceJoinedMember) => {
 /**
  * 指定されたボイスチャンネルに対応するテキストチャンネルを検索します。
  *
- * @param {VoiceChannel} voiceChannel - 検索対象のボイスチャンネル
- * @returns {Collection<Channel>} - 検索結果のチャンネルコレクション
+ * @param voiceChannel - 検索対象のボイスチャンネル
+ * @returns 検索結果のチャンネルコレクション
  */
-const channelFind = (voiceChannel) => {
+const channelFind = (
+  voiceChannel: VoiceChannel
+): Collection<string, TextChannel> => {
   const guild = voiceChannel.guild;
   const searchCondition = voiceChannel.id;
-  const result = guild.channels.cache.filter((val) =>
-    val.name.endsWith(searchCondition)
+  const result = guild.channels.cache.filter(
+    (val): val is TextChannel =>
+      val.isTextBased() && !val.isThread() && val.name.endsWith(searchCondition)
   );
-  return result;
+  return result as Collection<string, TextChannel>;
 };
 
 /**
  * テキストチャンネルを削除します。
  *
- * @param {VoiceChannel} ch - 削除するチャンネル
- * @returns {Promise<void>} - チャンネルが削除された時に解決される Promise
+ * @param ch - 削除するチャンネル
+ * @returns チャンネルが削除された時に解決される Promise
  */
-const textChannelDelete = async (ch) => {
+const textChannelDelete = async (ch: VoiceChannel): Promise<void> => {
   try {
     const target = channelFind(ch);
 
@@ -206,7 +220,9 @@ const textChannelDelete = async (ch) => {
           try {
             await deleteChannel(channel.id);
             await channel.delete();
-            console.log(`DELETE    : deleted text channel #${channel.name}(${channel.id})`);
+            console.log(
+              `DELETE    : deleted text channel #${channel.name}(${channel.id})`
+            );
           } catch (err) {
             console.error(`Error deleting channel ${channel.id}:`, err);
           }
@@ -223,21 +239,29 @@ const textChannelDelete = async (ch) => {
 /**
  * チャンネルを入室時に呼ぶ、ユーザーにチャンネルの表示権限を付与します。
  *
- * @param {VoiceChannel} ch - 参加するボイスチャンネル
- * @param {GuildMember} user - 権限を付与するユーザー
- * @returns {Promise<void>} - 操作が完了したときに解決されるプロミス
+ * @param ch - 参加するボイスチャンネル
+ * @param user - 権限を付与するユーザー
+ * @returns 操作が完了したときに解決されるプロミス
  */
-const channelJoin = async (ch, user) => {
+const channelJoin = async (
+  ch: VoiceChannel,
+  user: GuildMember
+): Promise<void> => {
   try {
     const target = channelFind(ch);
     if (target.size > 0) {
       const textChannel = target.first();
+      if (!textChannel || !textChannel.permissionOverwrites) {
+        return;
+      }
       await textChannel.permissionOverwrites.edit(user, { ViewChannel: true });
       console.log(
         `PERMISSION: added view channel #${textChannel.name}(${textChannel.id}) to ${user.displayName}(${user.id})`
       );
     } else {
-      console.log(`PERMISSION: no text channel found for voice channel ${ch.id}`);
+      console.log(
+        `PERMISSION: no text channel found for voice channel ${ch.id}`
+      );
     }
   } catch (err) {
     console.error("Error adding channel view permission:", err);
@@ -247,21 +271,29 @@ const channelJoin = async (ch, user) => {
 /**
  * チャンネルを退出時に呼ぶ、ユーザーの権限を更新します。
  *
- * @param {VoiceChannel} ch - 退出するボイスチャンネル
- * @param {GuildMember} user - 権限を更新するユーザー
- * @returns {Promise<void>} - 操作が完了したときに解決されるプロミス
+ * @param ch - 退出するボイスチャンネル
+ * @param user - 権限を更新するユーザー
+ * @returns 操作が完了したときに解決されるプロミス
  */
-const channelLeave = async (ch, user) => {
+const channelLeave = async (
+  ch: VoiceChannel,
+  user: GuildMember
+): Promise<void> => {
   try {
     const target = channelFind(ch);
     if (target.size > 0) {
       const textChannel = target.first();
+      if (!textChannel || !textChannel.permissionOverwrites) {
+        return;
+      }
       await textChannel.permissionOverwrites.edit(user, { ViewChannel: false });
       console.log(
         `PERMISSION: removed view channel #${textChannel.name}(${textChannel.id}) from ${user.displayName}(${user.id})`
       );
     } else {
-      console.log(`PERMISSION: no text channel found for voice channel ${ch.id}`);
+      console.log(
+        `PERMISSION: no text channel found for voice channel ${ch.id}`
+      );
     }
   } catch (err) {
     console.error("Error removing channel view permission:", err);
@@ -271,15 +303,21 @@ const channelLeave = async (ch, user) => {
 /**
  * ユーザーがチャンネルに参加したときに通知を送信します。
  *
- * @param {VoiceChannel} ch - ボイスチャンネル
- * @param {GuildMember} user - ユーザーオブジェクト
- * @returns {Promise<void>} - 通知が送信されると解決するプロミス
+ * @param ch - ボイスチャンネル
+ * @param user - ユーザーオブジェクト
+ * @returns 通知が送信されると解決するプロミス
  */
-const joinChannelSendNotification = async (ch, user) => {
+const joinChannelSendNotification = async (
+  ch: VoiceChannel,
+  user: GuildMember
+): Promise<void> => {
   try {
     const target = channelFind(ch);
     if (target.size > 0) {
       const sendChannel = target.first();
+      if (!sendChannel) {
+        return;
+      }
       await sendChannel.send(`Join: ${user.displayName}`);
       console.log(
         `JOIN      : ${user.displayName} joined channel #${sendChannel.name}(${sendChannel.id})`
@@ -293,11 +331,14 @@ const joinChannelSendNotification = async (ch, user) => {
 /**
  * チャンネルから退出したときに通知を送信します。
  *
- * @param {VoiceChannel} ch - ボイスチャンネル
- * @param {GuildMember} user - 退出したユーザーのオブジェクト
- * @returns {Promise<void>}
+ * @param ch - ボイスチャンネル
+ * @param user - 退出したユーザーのオブジェクト
+ * @returns 通知送信完了のPromise
  */
-const leaveChannelSendNotification = async (ch, user) => {
+const leaveChannelSendNotification = async (
+  ch: VoiceChannel,
+  user: GuildMember
+): Promise<void> => {
   try {
     const target = channelFind(ch);
     if (target.size > 0) {
@@ -326,8 +367,12 @@ const options = {
 
 const discordClient = new Client(options);
 
-discordClient.on("voiceStateUpdate", async (oldState, newState) => {
+discordClient.on("voiceStateUpdate", async (oldState: VoiceState, newState: VoiceState) => {
   try {
+    if (!newState.member) {
+      return;
+    }
+
     console.log(
       `VOICE_LOG : ${newState.member.id}(${newState.member.displayName}) ${oldState.channelId} -> ${newState.channelId}`
     );
@@ -336,14 +381,19 @@ discordClient.on("voiceStateUpdate", async (oldState, newState) => {
     const conn = getVoiceConnection(DISCORD_GUILD_ID);
     if (conn) {
       const vcChannelId = conn.joinConfig.channelId;
-      const voiceChannel = discordClient.channels.cache.get(vcChannelId);
-      if (voiceChannel && voiceChannel.members.size < 2) {
-        conn.destroy();
+      if (vcChannelId) {
+        const voiceChannel = discordClient.channels.cache.get(vcChannelId);
+        if (voiceChannel && "members" in voiceChannel) {
+          const members = voiceChannel.members;
+          if (members && "size" in members && members.size < 2) {
+            conn.destroy();
+          }
+        }
       }
     }
 
     const newMember = newState.member;
-    
+
     // チャンネル移動がない場合は処理をスキップ
     if (oldState.channelId === newState.channelId) {
       return;
@@ -353,10 +403,14 @@ discordClient.on("voiceStateUpdate", async (oldState, newState) => {
     const isBot = newMember.user.bot;
 
     // 退出処理
-    if (oldState.channelId != null) {
-      const oldChannel = oldState.guild.channels.cache.get(oldState.channelId);
+    if (oldState.channelId != null && oldState.member) {
+      const oldChannel = oldState.guild.channels.cache.get(
+        oldState.channelId
+      ) as VoiceChannel | undefined;
       if (!oldChannel) {
-        console.log(`Warning: oldChannel ${oldState.channelId} not found in cache`);
+        console.log(
+          `Warning: oldChannel ${oldState.channelId} not found in cache`
+        );
         return;
       }
 
@@ -382,9 +436,13 @@ discordClient.on("voiceStateUpdate", async (oldState, newState) => {
         return;
       }
 
-      const newChannel = newState.guild.channels.cache.get(newState.channelId);
+      const newChannel = newState.guild.channels.cache.get(
+        newState.channelId
+      ) as VoiceChannel | undefined;
       if (!newChannel) {
-        console.log(`Warning: newChannel ${newState.channelId} not found in cache`);
+        console.log(
+          `Warning: newChannel ${newState.channelId} not found in cache`
+        );
         return;
       }
 
@@ -410,7 +468,7 @@ discordClient.on("voiceStateUpdate", async (oldState, newState) => {
  * テキストメッセージを処理してTTS音声を再生する
  * ミュート状態のユーザーが特定のテキストチャンネルで発言した場合のみ処理
  */
-discordClient.on("messageCreate", async (message) => {
+discordClient.on("messageCreate", async (message: Message) => {
   try {
     // 基本的なバリデーション
     if (!message.guild || !message.member) {
@@ -450,13 +508,16 @@ discordClient.on("messageCreate", async (message) => {
       return;
     }
 
-    console.log(`TTS_LOG   : ${message.member.displayName}: ${message.content}`);
+    console.log(
+      `TTS_LOG   : ${message.member.displayName}: ${message.content}`
+    );
 
     // 発言者の参加チャンネルが、今のBot参加チャンネルと違うなら移動する
     const currentConnection = getVoiceConnection(DISCORD_GUILD_ID);
     const shouldMove =
-      !currentConnection || currentConnection.joinConfig.channelId !== channel.id;
-    
+      !currentConnection ||
+      currentConnection.joinConfig.channelId !== channel.id;
+
     const joinOption = {
       adapterCreator: channel.guild.voiceAdapterCreator,
       channelId: channel.id,
@@ -465,7 +526,7 @@ discordClient.on("messageCreate", async (message) => {
       selfMute: false,
     };
 
-    const conn = shouldMove
+    const conn: VoiceConnection = shouldMove
       ? joinVoiceChannel(joinOption)
       : currentConnection;
 
@@ -477,7 +538,7 @@ discordClient.on("messageCreate", async (message) => {
     const resource = createAudioResource(audioStream, {
       inputType: StreamType.OggOpus,
     });
-    
+
     player.play(resource);
   } catch (err) {
     console.error("Error in messageCreate event:", err);

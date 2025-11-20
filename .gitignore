@@ -2,3 +2,7 @@
 node_modules/
 docker/bot/config/coefont.json
 docker/bot/data/
+bot/dist/
+bot/*.js
+bot/*.js.map
+!bot/src/**/*.js

@@ -2,11 +2,12 @@
   "name": "tts-bot",
   "version": "1.0.0",
   "description": "",
-  "main": "app.js",
+  "main": "dist/app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "echo \"Build successful - JavaScript project (no compilation needed)\" && node -c app.js",
-    "start": "node app.js"
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "tsx src/app.ts"
   },
   "author": "",
   "license": "MIT",
@@ -19,5 +20,10 @@
     "discord.js": "^14.25.0",
     "keyv": "^5.5.4",
     "sodium": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   }
 }
