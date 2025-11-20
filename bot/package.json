@@ -16,7 +16,6 @@
     "@discordjs/voice": "^0.18.0",
     "@google-cloud/text-to-speech": "^6.4.0",
     "@keyv/sqlite": "^4.0.6",
-    "axios": "^1.13.2",
     "discord.js": "^14.25.0",
     "keyv": "^5.5.4",
     "sodium": "^3.0.2"

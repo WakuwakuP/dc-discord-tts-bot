@@ -67,8 +67,6 @@ const setChannel = async (channelId: string): Promise<boolean> => {
   }
 };
 
-
-
 const hasChannel = async (channelId: string): Promise<boolean> => {
   try {
     return await channels.has(channelId);
@@ -86,6 +84,13 @@ const deleteChannel = async (channelId: string): Promise<boolean> => {
     throw err;
   }
 };
+
+const ttsClient = new textToSpeech.TextToSpeechClient({
+  credentials: {
+    client_email: GOOGLE_CLIENT_EMAIL,
+    private_key: GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  },
+});
 
 /**
  * テキスト → ReadableStream
@@ -124,13 +129,6 @@ const GoogleTextToSpeechReadableStream = async (
     throw err;
   }
 };
-
-const ttsClient = new textToSpeech.TextToSpeechClient({
-  credentials: {
-    client_email: GOOGLE_CLIENT_EMAIL,
-    private_key: GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-  },
-});
 
 /**
  * テキストチャンネルを作成する関数です。
