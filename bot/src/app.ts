@@ -469,7 +469,7 @@ discordClient.on("voiceStateUpdate", async (oldState: VoiceState, newState: Voic
 discordClient.on("messageCreate", async (message: Message) => {
   try {
     // 基本的なバリデーション
-    if (!message.guild || !message.member || !message.member.voice) {
+    if (!message.guild || !message.member) {
       return;
     }
 
