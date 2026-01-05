@@ -26,4 +26,4 @@ jobs:
       
       - name: Verify Docker image was created
         run: |
-          docker images | grep dc-discord-tts-bot || docker images
+          docker compose images
