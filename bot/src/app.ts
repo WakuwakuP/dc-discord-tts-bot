@@ -469,16 +469,17 @@ discordClient.on("voiceStateUpdate", async (oldState: VoiceState, newState: Voic
 discordClient.on("messageCreate", async (message: Message) => {
   try {
     // 基本的なバリデーション
-    if (!message.guild || !message.member) {
+    if (!message.guild || !message.member || !message.member.voice) {
       return;
     }
 
     const guild = message.guild;
-    const channel = message.member.voice.channel;
+    const member = message.member;
+    const channel = member.voice.channel;
 
     // ミュートの人の特定テキストチャンネルの発言だけ拾う
     if (
-      !message.member.voice.selfMute ||
+      !member.voice.selfMute ||
       guild.id !== DISCORD_GUILD_ID ||
       !channel ||
       !(await hasChannel(message.channel.id))
@@ -507,7 +508,7 @@ discordClient.on("messageCreate", async (message: Message) => {
     }
 
     console.log(
-      `TTS_LOG   : ${message.member.displayName}: ${message.content}`
+      `TTS_LOG   : ${member.displayName}: ${message.content}`
     );
 
     // 発言者の参加チャンネルが、今のBot参加チャンネルと違うなら移動する
