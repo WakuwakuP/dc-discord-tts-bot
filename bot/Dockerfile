@@ -4,7 +4,8 @@ WORKDIR /bot
 
 # Install system dependencies including build tools for native modules
 RUN apt update && \
-  apt install -y autoconf automake python3 make g++
+  apt install -y autoconf automake python3 make g++ && \
+  rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package.json package-lock.json /bot/
@@ -48,8 +49,8 @@ RUN npm config set cache /tmp/npm-cache --global && \
     npm config set strict-ssl false && \
     npm install --production --ignore-scripts && \
     (npm rebuild || echo "Warning: Some native modules failed to rebuild, continuing anyway")
-# Unset the TLS variable for security
-ENV NODE_TLS_REJECT_UNAUTHORIZED=""
+# Restore TLS verification for security in production runtime
+ENV NODE_TLS_REJECT_UNAUTHORIZED=1
 
 # Copy built JavaScript from builder stage
 COPY --from=builder /bot/dist /bot/dist
