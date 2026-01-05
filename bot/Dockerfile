@@ -3,8 +3,8 @@ FROM node:20 AS builder
 WORKDIR /bot
 
 # Install system dependencies including build tools for native modules
-RUN apt update && \
-  apt install -y autoconf automake python3 make g++ ca-certificates && \
+RUN apt-get update && \
+  apt-get install -y autoconf automake python3 make g++ ca-certificates && \
   rm -rf /var/lib/apt/lists/*
 
 # Copy package files
@@ -20,8 +20,9 @@ COPY package.json package-lock.json /bot/
 ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 RUN npm config set strict-ssl false && \
     npm install --ignore-scripts && \
+    npm config set strict-ssl true && \
     (npm rebuild 2>&1 | tee /tmp/rebuild.log || true) && \
-    if grep -q "Error.*sodium" /tmp/rebuild.log; then \
+    if grep -qE "Error:.*sodium|sodium.*Error" /tmp/rebuild.log; then \
       echo "Note: Optional dependency 'sodium' failed to rebuild. This is expected and acceptable."; \
     elif grep -qi "error" /tmp/rebuild.log; then \
       echo "ERROR: Critical dependency failed to rebuild!"; \
@@ -42,8 +43,8 @@ FROM node:20
 WORKDIR /bot
 
 # Install ffmpeg and runtime dependencies in production image
-RUN apt update && \
-  apt install -y ffmpeg python3 ca-certificates && \
+RUN apt-get update && \
+  apt-get install -y ffmpeg python3 ca-certificates && \
   rm -rf /var/lib/apt/lists/*
 
 # Copy package files
@@ -56,8 +57,9 @@ COPY package.json package-lock.json /bot/
 ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 RUN npm config set strict-ssl false && \
     npm install --production --ignore-scripts && \
+    npm config set strict-ssl true && \
     (npm rebuild 2>&1 | tee /tmp/rebuild.log || true) && \
-    if grep -q "Error.*sodium" /tmp/rebuild.log; then \
+    if grep -qE "Error:.*sodium|sodium.*Error" /tmp/rebuild.log; then \
       echo "Warning: Optional dependency 'sodium' failed to rebuild. This is acceptable as the bot works without it."; \
     elif grep -qi "error" /tmp/rebuild.log; then \
       echo "ERROR: Critical dependency failed to rebuild!"; \
