@@ -56,14 +56,14 @@ COPY package.json package-lock.json /bot/
 ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 RUN npm config set strict-ssl false && \
     npm install --production --ignore-scripts && \
-    (npm rebuild 2>&1 | tee /tmp/rebuild.log && \
-     if grep -q "Error.*sodium" /tmp/rebuild.log; then \
-       echo "Warning: Optional dependency 'sodium' failed to rebuild. This is acceptable as the bot works without it."; \
-     elif grep -qi "error" /tmp/rebuild.log; then \
-       echo "ERROR: Critical dependency failed to rebuild!"; \
-       cat /tmp/rebuild.log; \
-       exit 1; \
-     fi)
+    (npm rebuild 2>&1 | tee /tmp/rebuild.log || true) && \
+    if grep -q "Error.*sodium" /tmp/rebuild.log; then \
+      echo "Warning: Optional dependency 'sodium' failed to rebuild. This is acceptable as the bot works without it."; \
+    elif grep -qi "error" /tmp/rebuild.log; then \
+      echo "ERROR: Critical dependency failed to rebuild!"; \
+      cat /tmp/rebuild.log; \
+      exit 1; \
+    fi
 
 # IMPORTANT: Re-enable TLS verification for runtime security
 # The above NODE_TLS_REJECT_UNAUTHORIZED=0 was ONLY for the build/install process
