@@ -17,11 +17,6 @@ import {
   StreamType,
   getVoiceConnection,
   VoiceConnection,
-  VoiceConnectionStatus,
-  VoiceConnectionDisconnectReason,
-  AudioPlayerStatus,
-  entersState,
-  generateDependencyReport,
 } from "@discordjs/voice";
 import Keyv from "keyv";
 import KeyvSqlite from "@keyv/sqlite";
@@ -389,11 +384,7 @@ discordClient.on("voiceStateUpdate", async (oldState: VoiceState, newState: Voic
         if (voiceChannel && "members" in voiceChannel) {
           const members = voiceChannel.members;
           if (members && "size" in members && members.size < 2) {
-            try {
-              conn.destroy();
-            } catch {
-              // already destroyed
-            }
+            conn.destroy();
           }
         }
       }
@@ -520,6 +511,12 @@ discordClient.on("messageCreate", async (message: Message) => {
       `TTS_LOG   : ${member.displayName}: ${message.content}`
     );
 
+    // 発言者の参加チャンネルが、今のBot参加チャンネルと違うなら移動する
+    const currentConnection = getVoiceConnection(DISCORD_GUILD_ID);
+    const shouldMove =
+      !currentConnection ||
+      currentConnection.joinConfig.channelId !== channel.id;
+
     const joinOption = {
       adapterCreator: channel.guild.voiceAdapterCreator,
       channelId: channel.id,
@@ -528,66 +525,12 @@ discordClient.on("messageCreate", async (message: Message) => {
       selfMute: false,
     };
 
-    // 既存の接続を取得し、使えない状態なら破棄する
-    let existingConnection = getVoiceConnection(DISCORD_GUILD_ID);
-    if (
-      existingConnection &&
-      existingConnection.state.status !== VoiceConnectionStatus.Ready &&
-      existingConnection.state.status !== VoiceConnectionStatus.Connecting
-    ) {
-      // Destroyed, Disconnected, Signalling など Ready/Connecting 以外は破棄
-      console.log(
-        `VC_CLEANUP: Destroying stale connection (status: ${existingConnection.state.status})`
-      );
-      try {
-        existingConnection.destroy();
-      } catch {
-        // already destroyed
-      }
-      existingConnection = undefined;
-    }
+    const conn: VoiceConnection = shouldMove
+      ? joinVoiceChannel(joinOption)
+      : currentConnection;
 
-    // 既存の接続が使えて、かつ同じチャンネルならそのまま使う。それ以外は新規接続
-    let conn: VoiceConnection;
-    if (
-      existingConnection &&
-      existingConnection.state.status !== VoiceConnectionStatus.Destroyed &&
-      existingConnection.joinConfig.channelId === channel.id
-    ) {
-      conn = existingConnection;
-    } else {
-      // 既存の接続が別チャンネル向けなら破棄してから新規接続
-      if (
-        existingConnection &&
-        existingConnection.state.status !== VoiceConnectionStatus.Destroyed
-      ) {
-        try {
-          existingConnection.destroy();
-        } catch {
-          // already destroyed
-        }
-      }
-      conn = joinVoiceChannel(joinOption);
-    }
-
-    setupVoiceConnectionHandlers(conn);
-
-    // 接続がReadyになるまで待つ
-    if (conn.state.status !== VoiceConnectionStatus.Ready) {
-      try {
-        await entersState(conn, VoiceConnectionStatus.Ready, 15_000);
-      } catch {
-        console.error(
-          `TTS_ERROR : VoiceConnection failed to become ready (status: ${conn.state.status})`
-        );
-        try {
-          conn.destroy();
-        } catch {
-          // already destroyed
-        }
-        return;
-      }
-    }
+    const player = createAudioPlayer();
+    conn.subscribe(player);
 
     // TTS音声の生成と再生
     const audioStream = await GoogleTextToSpeechReadableStream(text);
@@ -595,119 +538,14 @@ discordClient.on("messageCreate", async (message: Message) => {
       inputType: StreamType.OggOpus,
     });
 
-    // キューに追加して順番に再生
-    await enqueueAudio(conn, resource);
+    player.play(resource);
   } catch (err) {
     console.error("Error in messageCreate event:", err);
   }
 });
 
-// --- VoiceConnection state management ---
-const handledConnections = new WeakSet<VoiceConnection>();
-
-function setupVoiceConnectionHandlers(conn: VoiceConnection): void {
-  if (handledConnections.has(conn)) {
-    return;
-  }
-  handledConnections.add(conn);
-
-  conn.on("stateChange", async (_oldState, newState) => {
-    console.log(`VC_STATE  : ${_oldState.status} -> ${newState.status}`);
-
-    if (newState.status === VoiceConnectionStatus.Signalling || newState.status === VoiceConnectionStatus.Connecting) {
-      // Signalling/Connecting が 15 秒以上続いたら破棄する
-      try {
-        await entersState(conn, VoiceConnectionStatus.Ready, 15_000);
-      } catch {
-        console.error(
-          `VC_TIMEOUT: Connection stuck in ${conn.state.status}, destroying`
-        );
-        try {
-          conn.destroy();
-        } catch {
-          // already destroyed
-        }
-      }
-    } else if (newState.status === VoiceConnectionStatus.Disconnected) {
-      /*
-       * WebSocket close code 4014 means Discord told us to move/disconnect.
-       * In that case we should try to reconnect automatically.
-       * Other close codes may also be recoverable, so we attempt reconnect first,
-       * and destroy if it fails.
-       */
-      if (
-        newState.reason === VoiceConnectionDisconnectReason.WebSocketClose &&
-        newState.closeCode === 4014
-      ) {
-        // Do NOT destroy — just wait for the connection to auto-recover
-        try {
-          await entersState(conn, VoiceConnectionStatus.Connecting, 5_000);
-        } catch {
-          try {
-            conn.destroy();
-          } catch {
-            // already destroyed
-          }
-        }
-      } else {
-        // For other disconnect reasons, try to rejoin
-        try {
-          await entersState(
-            conn,
-            VoiceConnectionStatus.Connecting,
-            5_000
-          );
-        } catch {
-          try {
-            conn.destroy();
-          } catch {
-            // already destroyed
-          }
-        }
-      }
-    }
-  });
-}
-
-// --- Audio queue system ---
-const audioPlayer = createAudioPlayer();
-const audioQueue: ReturnType<typeof createAudioResource>[] = [];
-let isPlaying = false;
-
-audioPlayer.on(AudioPlayerStatus.Idle, () => {
-  isPlaying = false;
-  processQueue();
-});
-
-audioPlayer.on("error", (error: Error) => {
-  console.error("AudioPlayer error:", error);
-  isPlaying = false;
-  processQueue();
-});
-
-function processQueue(): void {
-  if (isPlaying || audioQueue.length === 0) {
-    return;
-  }
-  const resource = audioQueue.shift();
-  if (resource) {
-    isPlaying = true;
-    audioPlayer.play(resource);
-  }
-}
-
-async function enqueueAudio(
-  conn: VoiceConnection,
-  resource: ReturnType<typeof createAudioResource>
-): Promise<void> {
-  conn.subscribe(audioPlayer);
-  audioQueue.push(resource);
-  processQueue();
-}
-
 discordClient.once("clientReady", () => {
   console.log("ready......");
-  console.log(generateDependencyReport());
 });
 
 discordClient.login(DISCORD_TOKEN);

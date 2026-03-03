@@ -1,4 +1,4 @@
-FROM node:24 AS builder
+FROM node:22 AS builder
 
 WORKDIR /bot
 
@@ -25,7 +25,7 @@ RUN npm run build
 RUN npm prune --production
 
 # Production stage
-FROM node:24
+FROM node:22
 
 WORKDIR /bot
 
