@@ -12,13 +12,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "opusscript": "^0.1.1",
+    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.0",
     "@google-cloud/text-to-speech": "^6.4.0",
     "@keyv/sqlite": "^4.0.8",
     "discord.js": "^14.25.1",
     "keyv": "^5.6.0",
-    "libsodium-wrappers": "^0.8.2"
+    "sodium-native": "^5.0.10"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
