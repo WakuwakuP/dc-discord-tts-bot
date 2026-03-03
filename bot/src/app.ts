@@ -18,8 +18,10 @@ import {
   getVoiceConnection,
   VoiceConnection,
   VoiceConnectionStatus,
+  VoiceConnectionDisconnectReason,
   AudioPlayerStatus,
   entersState,
+  generateDependencyReport,
 } from "@discordjs/voice";
 import Keyv from "keyv";
 import KeyvSqlite from "@keyv/sqlite";
@@ -387,7 +389,11 @@ discordClient.on("voiceStateUpdate", async (oldState: VoiceState, newState: Voic
         if (voiceChannel && "members" in voiceChannel) {
           const members = voiceChannel.members;
           if (members && "size" in members && members.size < 2) {
-            conn.destroy();
+            try {
+              conn.destroy();
+            } catch {
+              // already destroyed
+            }
           }
         }
       }
@@ -514,12 +520,6 @@ discordClient.on("messageCreate", async (message: Message) => {
       `TTS_LOG   : ${member.displayName}: ${message.content}`
     );
 
-    // 発言者の参加チャンネルが、今のBot参加チャンネルと違うなら移動する
-    const currentConnection = getVoiceConnection(DISCORD_GUILD_ID);
-    const shouldMove =
-      !currentConnection ||
-      currentConnection.joinConfig.channelId !== channel.id;
-
     const joinOption = {
       adapterCreator: channel.guild.voiceAdapterCreator,
       channelId: channel.id,
@@ -528,16 +528,48 @@ discordClient.on("messageCreate", async (message: Message) => {
       selfMute: false,
     };
 
-    const conn: VoiceConnection = shouldMove
-      ? joinVoiceChannel(joinOption)
-      : currentConnection;
+    // 既存の接続を取得し、使えない状態なら破棄する
+    let existingConnection = getVoiceConnection(DISCORD_GUILD_ID);
+    if (
+      existingConnection &&
+      (existingConnection.state.status === VoiceConnectionStatus.Destroyed ||
+        existingConnection.state.status === VoiceConnectionStatus.Disconnected)
+    ) {
+      try {
+        existingConnection.destroy();
+      } catch {
+        // already destroyed
+      }
+      existingConnection = undefined;
+    }
+
+    // 既存の接続が使えて、かつ同じチャンネルならそのまま使う。それ以外は新規接続
+    let conn: VoiceConnection;
+    if (
+      existingConnection &&
+      existingConnection.state.status !== VoiceConnectionStatus.Destroyed &&
+      existingConnection.joinConfig.channelId === channel.id
+    ) {
+      conn = existingConnection;
+    } else {
+      conn = joinVoiceChannel(joinOption);
+    }
+
+    setupVoiceConnectionHandlers(conn);
 
     // 接続がReadyになるまで待つ
     if (conn.state.status !== VoiceConnectionStatus.Ready) {
       try {
-        await entersState(conn, VoiceConnectionStatus.Ready, 5_000);
+        await entersState(conn, VoiceConnectionStatus.Ready, 15_000);
       } catch {
-        console.error("TTS_ERROR : VoiceConnection failed to become ready");
+        console.error(
+          `TTS_ERROR : VoiceConnection failed to become ready (status: ${conn.state.status})`
+        );
+        try {
+          conn.destroy();
+        } catch {
+          // already destroyed
+        }
         return;
       }
     }
@@ -554,6 +586,59 @@ discordClient.on("messageCreate", async (message: Message) => {
     console.error("Error in messageCreate event:", err);
   }
 });
+
+// --- VoiceConnection state management ---
+const handledConnections = new WeakSet<VoiceConnection>();
+
+function setupVoiceConnectionHandlers(conn: VoiceConnection): void {
+  if (handledConnections.has(conn)) {
+    return;
+  }
+  handledConnections.add(conn);
+
+  conn.on("stateChange", async (_oldState, newState) => {
+    console.log(`VC_STATE  : ${_oldState.status} -> ${newState.status}`);
+
+    if (newState.status === VoiceConnectionStatus.Disconnected) {
+      /*
+       * WebSocket close code 4014 means Discord told us to move/disconnect.
+       * In that case we should try to reconnect automatically.
+       * Other close codes may also be recoverable, so we attempt reconnect first,
+       * and destroy if it fails.
+       */
+      if (
+        newState.reason === VoiceConnectionDisconnectReason.WebSocketClose &&
+        newState.closeCode === 4014
+      ) {
+        // Do NOT destroy — just wait for the connection to auto-recover
+        try {
+          await entersState(conn, VoiceConnectionStatus.Connecting, 5_000);
+        } catch {
+          try {
+            conn.destroy();
+          } catch {
+            // already destroyed
+          }
+        }
+      } else {
+        // For other disconnect reasons, try to rejoin
+        try {
+          await entersState(
+            conn,
+            VoiceConnectionStatus.Connecting,
+            5_000
+          );
+        } catch {
+          try {
+            conn.destroy();
+          } catch {
+            // already destroyed
+          }
+        }
+      }
+    }
+  });
+}
 
 // --- Audio queue system ---
 const audioPlayer = createAudioPlayer();
@@ -593,6 +678,7 @@ async function enqueueAudio(
 
 discordClient.once("clientReady", () => {
   console.log("ready......");
+  console.log(generateDependencyReport());
 });
 
 discordClient.login(DISCORD_TOKEN);
