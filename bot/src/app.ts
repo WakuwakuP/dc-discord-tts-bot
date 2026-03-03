@@ -532,9 +532,13 @@ discordClient.on("messageCreate", async (message: Message) => {
     let existingConnection = getVoiceConnection(DISCORD_GUILD_ID);
     if (
       existingConnection &&
-      (existingConnection.state.status === VoiceConnectionStatus.Destroyed ||
-        existingConnection.state.status === VoiceConnectionStatus.Disconnected)
+      existingConnection.state.status !== VoiceConnectionStatus.Ready &&
+      existingConnection.state.status !== VoiceConnectionStatus.Connecting
     ) {
+      // Destroyed, Disconnected, Signalling など Ready/Connecting 以外は破棄
+      console.log(
+        `VC_CLEANUP: Destroying stale connection (status: ${existingConnection.state.status})`
+      );
       try {
         existingConnection.destroy();
       } catch {
@@ -552,6 +556,17 @@ discordClient.on("messageCreate", async (message: Message) => {
     ) {
       conn = existingConnection;
     } else {
+      // 既存の接続が別チャンネル向けなら破棄してから新規接続
+      if (
+        existingConnection &&
+        existingConnection.state.status !== VoiceConnectionStatus.Destroyed
+      ) {
+        try {
+          existingConnection.destroy();
+        } catch {
+          // already destroyed
+        }
+      }
       conn = joinVoiceChannel(joinOption);
     }
 
@@ -599,7 +614,21 @@ function setupVoiceConnectionHandlers(conn: VoiceConnection): void {
   conn.on("stateChange", async (_oldState, newState) => {
     console.log(`VC_STATE  : ${_oldState.status} -> ${newState.status}`);
 
-    if (newState.status === VoiceConnectionStatus.Disconnected) {
+    if (newState.status === VoiceConnectionStatus.Signalling || newState.status === VoiceConnectionStatus.Connecting) {
+      // Signalling/Connecting が 15 秒以上続いたら破棄する
+      try {
+        await entersState(conn, VoiceConnectionStatus.Ready, 15_000);
+      } catch {
+        console.error(
+          `VC_TIMEOUT: Connection stuck in ${conn.state.status}, destroying`
+        );
+        try {
+          conn.destroy();
+        } catch {
+          // already destroyed
+        }
+      }
+    } else if (newState.status === VoiceConnectionStatus.Disconnected) {
       /*
        * WebSocket close code 4014 means Discord told us to move/disconnect.
        * In that case we should try to reconnect automatically.
