@@ -1,4 +1,4 @@
-FROM node:20 AS builder
+FROM node:24 AS builder
 
 WORKDIR /bot
 
@@ -38,7 +38,7 @@ COPY src /bot/src
 RUN npm run build
 
 # Production stage
-FROM node:20
+FROM node:24
 
 WORKDIR /bot
 
