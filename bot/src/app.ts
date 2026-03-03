@@ -544,7 +544,7 @@ discordClient.on("messageCreate", async (message: Message) => {
   }
 });
 
-discordClient.once("ready", () => {
+discordClient.once("clientReady", () => {
   console.log("ready......");
 });
 
