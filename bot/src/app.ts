@@ -17,6 +17,9 @@ import {
   StreamType,
   getVoiceConnection,
   VoiceConnection,
+  VoiceConnectionStatus,
+  AudioPlayerStatus,
+  entersState,
 } from "@discordjs/voice";
 import Keyv from "keyv";
 import KeyvSqlite from "@keyv/sqlite";
@@ -529,8 +532,15 @@ discordClient.on("messageCreate", async (message: Message) => {
       ? joinVoiceChannel(joinOption)
       : currentConnection;
 
-    const player = createAudioPlayer();
-    conn.subscribe(player);
+    // 接続がReadyになるまで待つ
+    if (conn.state.status !== VoiceConnectionStatus.Ready) {
+      try {
+        await entersState(conn, VoiceConnectionStatus.Ready, 5_000);
+      } catch {
+        console.error("TTS_ERROR : VoiceConnection failed to become ready");
+        return;
+      }
+    }
 
     // TTS音声の生成と再生
     const audioStream = await GoogleTextToSpeechReadableStream(text);
@@ -538,11 +548,48 @@ discordClient.on("messageCreate", async (message: Message) => {
       inputType: StreamType.OggOpus,
     });
 
-    player.play(resource);
+    // キューに追加して順番に再生
+    await enqueueAudio(conn, resource);
   } catch (err) {
     console.error("Error in messageCreate event:", err);
   }
 });
+
+// --- Audio queue system ---
+const audioPlayer = createAudioPlayer();
+const audioQueue: ReturnType<typeof createAudioResource>[] = [];
+let isPlaying = false;
+
+audioPlayer.on(AudioPlayerStatus.Idle, () => {
+  isPlaying = false;
+  processQueue();
+});
+
+audioPlayer.on("error", (error: Error) => {
+  console.error("AudioPlayer error:", error);
+  isPlaying = false;
+  processQueue();
+});
+
+function processQueue(): void {
+  if (isPlaying || audioQueue.length === 0) {
+    return;
+  }
+  const resource = audioQueue.shift();
+  if (resource) {
+    isPlaying = true;
+    audioPlayer.play(resource);
+  }
+}
+
+async function enqueueAudio(
+  conn: VoiceConnection,
+  resource: ReturnType<typeof createAudioResource>
+): Promise<void> {
+  conn.subscribe(audioPlayer);
+  audioQueue.push(resource);
+  processQueue();
+}
 
 discordClient.once("clientReady", () => {
   console.log("ready......");
