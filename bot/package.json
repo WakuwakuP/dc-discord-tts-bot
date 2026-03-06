@@ -16,6 +16,7 @@
     "@discordjs/voice": "^0.19.0",
     "@google-cloud/text-to-speech": "^6.4.0",
     "@keyv/sqlite": "^4.0.8",
+    "@snazzah/davey": "^0.1.10",
     "discord.js": "^14.25.1",
     "keyv": "^5.6.0",
     "sodium-native": "^5.0.10"
