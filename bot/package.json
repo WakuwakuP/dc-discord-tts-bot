@@ -15,7 +15,7 @@
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.0",
     "@google-cloud/text-to-speech": "^6.4.0",
-    "@keyv/sqlite": "^6.1.0",
+    "@keyv/sqlite": "^4.0.8",
     "@snazzah/davey": "^0.1.10",
     "discord.js": "^14.27.0",
     "keyv": "^5.6.0",
@@ -25,5 +25,10 @@
     "@types/node": "^25.3.3",
     "tsx": "^4.23.1",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "http-proxy-agent@4.0.1": {
+      "@tootallnate/once": "^2.0.1"
+    }
   }
 }
